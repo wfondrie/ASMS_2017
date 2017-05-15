@@ -18,11 +18,15 @@ library(MALDIquantForeign)
 library(caret)
 library(PRROC)
 library(stringr)
+library(doParallel)
 
 source("R/preProcessSpec.R")
 source("R/extract.R")
 
 set.seed(1832939)
+
+cl <- makeCluster(7)
+registerDoParallel(cl)
 ```
 
 
@@ -32,7 +36,7 @@ files <- list.files("data/smallLib",
                     full.names = T, 
                     pattern = "mzXML$",
                     recursive = T)
-files <- sample(files, 100)
+#files <- sample(files, 50)
 
 specInfo <- tibble(fname = files) %>%
     mutate(type = str_match(fname, "([^\\^/]+)[\\/][^\\^/]+mzXML$")[ , 2],
@@ -45,7 +49,7 @@ specInfo <- tibble(fname = files) %>%
 trainIdx <- list(AbRes = list(idx = createDataPartition(specInfo$AbRes, p = 0.6, list = F),
                               regex = "Acinetobacter baumannii - res"),
                  KpRes = list(idx = createDataPartition(specInfo$KpRes, p = 0.6, list = F),
-                              regex ="Klebsiella pneumoniae - res"))
+                              regex = "Klebsiella pneumoniae - res"))
 
 ```
 
@@ -66,7 +70,7 @@ determineFeatures <- function(trainList, n = 20) {
     # extract features
     features <- peakDat %>%
         mutate(sel = str_detect(type, trainList$regex)) %>%
-        #filter(sel) %>%
+        filter(sel) %>%
         group_by(sel, mz) %>%
         summarize(relInt = sum(relInt)) %>%
         group_by(sel) %>%
@@ -79,35 +83,110 @@ determineFeatures <- function(trainList, n = 20) {
 }
 
 featureList <- map(trainIdx, determineFeatures)
+trainIdx$AbRes$features <- unique(featureList$AbRes$mz)
+trainIdx$KpRes$features <- unique(featureList$KpRes$mz)
 
 features <- tibble(response = names(featureList), featList = featureList) %>%
     unnest() %>%
     select(response, mz)
 
 features <- unique(features)
+saveRDS(features, file = "temp/features.RDS")
 ```
 
 # Extract features from Spectra
 ```{r extractFeatures}
-spectbl <- map_df(spec, extractSpectra) %>% mutate(type = as.factor(type), id = as.factor(id))
+createFeatureTbl <- function(trainList, mzTol, testSet = F) {
+    idx <- if(testSet) -trainList$idx else trainList$idx
+    suffix <- if(testSet) "_test" else "_train"
+    suffix2 <- if(str_detect(trainList$regex, "Acineto")) "_AbRes" else "_KpRes"
+    
+    # Preprocess spectra
+    spec <- preProcessSpec(files[idx], hws = 80)
+    multiSpecIdx <- map_lgl(spec, ~ metaData(.)$num > 1)
+    spec <- spec[!multiSpecIdx]
+    
+    # extract spectra 
+    spectbl <- map_df(spec, extractSpectra) %>% 
+      mutate(type = as.factor(type), id = as.factor(id))
+    
+    # extract specified features
+    feattbl <- spectbl %>%
+      group_by(id) %>%
+      do(extractFeatures(., featureVec = trainList$features, tol = mzTol))
+    
+    saveRDS(feattbl, file = paste0("temp/featureInfo", suffix2, suffix))
+    
+    mlFeat <- feattbl %>%
+      select(id, type, feat, relInt) %>%
+      group_by(id) %>%
+      mutate(relInt = relInt / max(relInt)) %>%
+      ungroup() %>%
+      spread(key = feat, value = relInt, fill = 0) %>%
+      mutate(AbRes = as.factor(ifelse(str_detect(type, "i - r"), "pos", "neg")),
+             KpRes = as.factor(ifelse(str_detect(type, "e - r"), "pos", "neg")))
+    
+    return(mlFeat)
+}
 
-feattbl <- spectbl %>%
-    group_by(id) %>%
-    do(extractFeatures(., featureVec = features$mz, tol = 2.5))
+trainDatList <- map(trainIdx, createFeatureTbl, 
+                    mzTol = 2.5,
+                    testSet = F)
 
 ```
 
 
-# Prepare for model tuning
+# Model Tuning Parameters
 ```{r}
-# Wide df
-mlFeat <- feattbl %>%
-    select(id, type, feat, relInt) %>%
-    spread(key = feat, value = relInt) %>%
-    mutate(Ab = ifelse(str_detect(type, "Acinetobacter baumannii"), "pos", "neg"),
-           Kp = ifelse(str_detect(type, "Klebsiella pneumoniae"), "pos", "neg"),
-           AbRes = ifelse(str_detect(type, "i - r"), "pos", "neg"),
-           KpRes = ifelse(str_detect(type, "e - r"), "pos", "neg"))
+# AUC of precision-recall curve
+auprcSummary <- function(data, lev = NULL, model = NULL){
+  
+  index_class2 <- data$obs == "pos"
+  index_class1 <- data$obs == "neg"
+  
+  the_curve <- PRROC::pr.curve(data$pos[index_class2],
+                               data$pos[index_class1],
+                               curve = FALSE)
+  
+  out <- the_curve$auc.integral
+  names(out) <- "AUPRC"
+  
+  return(out)
+  
+}
+
+# 10-fold CV
+fitControl <- trainControl(method = "repeatedcv",
+                           number = 10,
+                           repeats = 10,
+                           summaryFunction = auprcSummary,
+                           classProbs = T,
+                           sampling = "up")
 ```
 
+# Fitting Ab model
+```{r AbModel}
+AbResponse <- trainDatList$AbRes %>% select(id, type, AbRes, KpRes)
+AbVars <- trainDatList$AbRes %>% select(starts_with("mz"))
+
+AbTune <- train(x = AbVars,
+                y = AbResponse$AbRes,
+                method = "rf",
+                trControl = fitControl,
+                metric = "AUPRC")
+  
+saveRDS(AbTune, file = "results/KpTune.RDS")
+```
+```{r KpModel}
+KpResponse <- trainDatList$KpRes %>% select(id, type, AbRes, KpRes)
+KpVars <- trainDatList$KpRes %>% select(starts_with("mz"))
+
+KpTune <- train(x = KpVars,
+                y = KpResponse$KpRes,
+                method = "rf",
+                trControl = fitControl,
+                metric = "AUPRC")
+
+saveRDS(KpTune, file = "results/KpTune.RDS")
+```
 

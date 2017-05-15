@@ -13,8 +13,8 @@
 extractPeaks <- function(massPeaks, massSpec) {
     feat <- as_tibble(intensityMatrix(massPeaks, massSpec))
     fname <- map_chr(massPeaks, ~ metaData(.)$file)
-    type <- str_match(fname, "([^\\^/]+)[\\/][^\\^/]+mzXML$")[ , 2]
-    id <- str_match(fname, "([^\\^/]+).mzXML$")[ , 2]
+    type <- str_match(fname, "([^\\\\^/]+)[\\\\/][^\\\\^/]+mzXML$")[ , 2]
+    id <- str_match(fname, "([^\\\\^/]+).mzXML$")[ , 2]
     
     feat$id <- as.factor(id)
     feat$type <- as.factor(type)
@@ -42,12 +42,12 @@ extractPeaks <- function(massPeaks, massSpec) {
 #   id     - a unique identifier for the spectrum
 
 extractSpectra <- function(massSpec) {
-    s <- tibble(mz = as.numeric(massSpec$mass),
-                relInt = as.numeric(massSpec$intensity))
+    s <- tibble(mz = as.numeric(massSpec@mass),
+                relInt = as.numeric(massSpec@intensity))
     
     fname <- metaData(massSpec)$file
-    type <- str_match(fname, "([^\\^/]+)[\\/][^\\^/]+mzXML$")[ , 2]
-    id <- paste(str_match(fname, "([^\\^/]+).mzXML$")[ , 2], num, sep = "_n")
+    type <- str_match(fname, "([^\\\\^/]+)[\\\\/][^\\\\^/]+mzXML$")[ , 2]
+    id <- str_match(fname, "([^\\\\^/]+).mzXML$")[ , 2]
     
     s$type <- type
     s$id <- id
