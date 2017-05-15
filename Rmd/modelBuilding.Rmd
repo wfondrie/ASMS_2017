@@ -26,31 +26,37 @@ source("R/extract.R")
 
 set.seed(1832939)                        # For reproducibility
 
-cl <- makeCluster(7)                     # For parallelization
+cl <- makeCluster(detectCores() - 1)       # For parallelization
 registerDoParallel(cl)
 ```
 
 
 ## Load Mass Spectra and Extract Peaks
 ```{r importData}
-files <- list.files("data/smallLib", 
+files <- list.files("data/fullLib", 
                     full.names = T, 
                     pattern = "mzXML$",
                     recursive = T)
-files <- sample(files, 50)
+#files <- sample(files, 50)
 
 specInfo <- tibble(fname = files) %>%
     mutate(type = str_match(fname, "([^\\^/]+)[\\/][^\\^/]+mzXML$")[ , 2],
            id = str_match(fname, "([^\\^/]+).mzXML$")[ , 2],
            AbRes = as.factor(ifelse(str_detect(type, "Acinetobacter baumannii - res"), "pos", "neg")),
-           KpRes = as.factor(ifelse(str_detect(type, "Klebsiella pneumoniae - res"), "pos", "neg")))
+           KpRes = as.factor(ifelse(str_detect(type, "Klebsiella pneumoniae - res"), "pos", "neg")),
+           AbSus = as.factor(ifelse(str_detect(type, "Acinetobacter baumannii - sen"), "pos", "neg")),
+           KpSus = as.factor(ifelse(str_detect(type, "Klebsiella pneumoniae - sen"), "pos", "neg")))
 
 
 
 trainIdx <- list(AbRes = list(idx = createDataPartition(specInfo$AbRes, p = 0.6, list = F),
                               regex = "Acinetobacter baumannii - res"),
                  KpRes = list(idx = createDataPartition(specInfo$KpRes, p = 0.6, list = F),
-                              regex = "Klebsiella pneumoniae - res"))
+                              regex = "Klebsiella pneumoniae - res"),
+                 AbSus = list(idx = createDataPartition(specInfo$AbSus, p = 0.6, list = F),
+                              regex = "Acinetobacter baumannii - sen"),
+                 KpSus = list(idx = createDataPartition(specInfo$KpSus, p = 0.6, list = F),
+                              regex = "Klebsiella pneumoniae - sen"))
 
 ```
 
@@ -87,6 +93,8 @@ determineFeatures <- function(trainList, n = 20) {
 featureList <- map(trainIdx, determineFeatures)
 trainIdx$AbRes$features <- unique(featureList$AbRes$mz)
 trainIdx$KpRes$features <- unique(featureList$KpRes$mz)
+trainIdx$AbSus$features <- unique(featureList$AbSus$mz)
+trainIdx$KpSus$features <- unique(featureList$KpSus$mz)
 
 features <- tibble(response = names(featureList), featList = featureList) %>%
     unnest() %>%
@@ -101,7 +109,8 @@ saveRDS(features, file = "temp/features.RDS")
 createFeatureTbl <- function(trainList, mzTol, testSet = F) {
     idx <- if(testSet) -trainList$idx else trainList$idx
     suffix <- if(testSet) "_test" else "_train"
-    suffix2 <- if(str_detect(trainList$regex, "Acineto")) "_AbRes" else "_KpRes"
+    suffix2 <- if(str_detect(trainList$regex, "Acineto")) "_Ab" else "_Kp"
+    suffix3 <- if(str_detect(trainList$regex, "res")) "_res" else "_sus"
     
     # Preprocess spectra
     spec <- preProcessSpec(files[idx], hws = 80)
@@ -117,7 +126,7 @@ createFeatureTbl <- function(trainList, mzTol, testSet = F) {
       group_by(id) %>%
       do(extractFeatures(., featureVec = trainList$features, tol = mzTol))
     
-    saveRDS(feattbl, file = paste0("temp/featureInfo", suffix2, suffix))
+    saveRDS(feattbl, file = paste0("temp/featureInfo", suffix2, suffix3, suffix))
     
     mlFeat <- feattbl %>%
       select(id, type, feat, relInt) %>%
@@ -126,7 +135,9 @@ createFeatureTbl <- function(trainList, mzTol, testSet = F) {
       ungroup() %>%
       spread(key = feat, value = relInt, fill = 0) %>%
       mutate(AbRes = as.factor(ifelse(str_detect(type, "i - r"), "pos", "neg")),
-             KpRes = as.factor(ifelse(str_detect(type, "e - r"), "pos", "neg")))
+             KpRes = as.factor(ifelse(str_detect(type, "e - r"), "pos", "neg")),
+             AbSus = as.factor(ifelse(str_detect(type, "i - s"), "pos", "neg")),
+             KpSus = as.factor(ifelse(str_detect(type, "e - s"), "pos", "neg")))
     
     return(mlFeat)
 }
@@ -166,31 +177,65 @@ fitControl <- trainControl(method = "repeatedcv",
                            sampling = "up")
 ```
 
-# Fitting Ab model
+# Fitting Ab models
 ```{r AbModel, cache = T}
-AbResponse <- trainDatList$AbRes %>% select(id, type, AbRes, KpRes)
-AbVars <- trainDatList$AbRes %>% select(starts_with("mz"))
+AbResResponse <- trainDatList$AbRes %>% select(AbRes)
+AbResVars <- trainDatList$AbRes %>% select(starts_with("mz"))
 
-AbTune <- train(x = AbVars,
-                y = AbResponse$AbRes,
+AbResTune <- train(x = AbResVars,
+                y = AbResResponse$AbRes,
                 method = "rf",
                 trControl = fitControl,
                 metric = "AUPRC")
-  
-saveRDS(AbTune, file = "results/KpTune.RDS")
+
+
+AbSusResponse <- trainDatList$AbSus %>% select(AbSus)
+AbSusVars <- trainDatList$AbSus %>% select(starts_with("mz"))
+
+AbSusTune <- train(x = AbSusVars,
+                y = AbSusResponse$AbSus,
+                method = "rf",
+                trControl = fitControl,
+                metric = "AUPRC")
 ```
 
-# Fitting Kp model
+# Fitting Kp models
 ```{r KpModel, cache = T}
-KpResponse <- trainDatList$KpRes %>% select(id, type, AbRes, KpRes)
-KpVars <- trainDatList$KpRes %>% select(starts_with("mz"))
+KpResResponse <- trainDatList$KpRes %>% select(KpRes)
+KpResVars <- trainDatList$KpRes %>% select(starts_with("mz"))
 
-KpTune <- train(x = KpVars,
-                y = KpResponse$KpRes,
+KpResTune <- train(x = KpResVars,
+                y = KpResResponse$KpRes,
                 method = "rf",
                 trControl = fitControl,
                 metric = "AUPRC")
 
-saveRDS(KpTune, file = "results/KpTune.RDS")
+
+KpSusResponse <- trainDatList$KpSus %>% select(KpSus)
+KpSusVars <- trainDatList$KpSus %>% select(starts_with("mz"))
+
+KpSusTune <- train(x = KpSusVars,
+                y = KpSusResponse$KpSus,
+                method = "rf",
+                trControl = fitControl,
+                metric = "AUPRC")
+```
+
+# Save Models
+```{r saveModels}
+modelList <- list(AbResTune, AbSusTune, KpResTune, KpSusTune)
+
+saveRDS(modelList, file = "results/modelList")
+
+```
+
+
+# Generate Test Sets
+```{r generateTestSets}
+testDatList <- map(trainIdx, createFeatureTbl, 
+                    mzTol = 2.5,
+                    testSet = T)
+
+saveRDS(testDatList, file = "temp/")
 ```
 
