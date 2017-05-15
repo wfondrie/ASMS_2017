@@ -1,7 +1,7 @@
 ---
 title: "Simulating Glycolipid MALDI-TOF-MS of Complex Samples"
 Author: "William E Fondrie"
-Date: "4/9/17"
+Date: "5/15/17"
 output: github_document
 ---
 
@@ -69,7 +69,7 @@ selectLinearCombos <- function(n, info) {
 }
 
 
-numSpecies <- rep(1:5, 10)
+numSpecies <- rep(1:20, 500)
 
 combos <- tibble(spec_id = as.factor(paste0("spec_", 1:length(numSpecies))),
                  comp = map(numSpecies, selectLinearCombos, info = specInfo)) %>%
