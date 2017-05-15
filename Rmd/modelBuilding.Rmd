@@ -6,12 +6,12 @@ output: github_document
 ---
 
 
-```{r setup, include = F}
+```{r setup, include = FALSE}
 knitr::opts_knit$set(root.dir = "..")
-knitr::opts_chunk$set(warning = F, message = F)
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
 ```
 
-```{r loadLibraries, results = "hide", echo = F}
+```{r loadLibraries, results = "hide", echo = FALSE}
 library(plyr, quietly = T)
 library(tidyverse, quietly = T)
 library(MALDIquant, quietly = T)
@@ -61,7 +61,7 @@ trainIdx <- list(AbRes = list(idx = createDataPartition(specInfo$AbRes, p = 0.6,
 ```
 
 # Determine Features
-```{r determineFeatures, cache = T}
+```{r determineFeatures, cache = TRUE}
 determineFeatures <- function(trainList, n = 20) {
     # Preprocess spectra
     spec <- preProcessSpec(files[trainList$idx], hws = 80)
@@ -105,7 +105,7 @@ saveRDS(features, file = "temp/features.RDS")
 ```
 
 # Extract features from Spectra
-```{r extractFeatures, cache = T}
+```{r extractFeatures, cache = TRUE}
 createFeatureTbl <- function(trainList, mzTol, testSet = F) {
     idx <- if(testSet) -trainList$idx else trainList$idx
     suffix <- if(testSet) "_test" else "_train"
@@ -178,7 +178,7 @@ fitControl <- trainControl(method = "repeatedcv",
 ```
 
 # Fitting Ab models
-```{r AbModel, cache = T}
+```{r AbModel, cache = TRUE}
 AbResResponse <- trainDatList$AbRes %>% select(AbRes)
 AbResVars <- trainDatList$AbRes %>% select(starts_with("mz"))
 
@@ -200,7 +200,7 @@ AbSusTune <- train(x = AbSusVars,
 ```
 
 # Fitting Kp models
-```{r KpModel, cache = T}
+```{r KpModel, cache = TRUE}
 KpResResponse <- trainDatList$KpRes %>% select(KpRes)
 KpResVars <- trainDatList$KpRes %>% select(starts_with("mz"))
 

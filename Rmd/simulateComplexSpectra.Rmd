@@ -5,7 +5,7 @@ Date: "4/9/17"
 output: github_document
 ---
 
-```{r setup, include = F}
+```{r setup, include = FALSE}
 knitr::opts_knit$set(root.dir = "..")
 knitr::opts_chunk$set(warning = F, message = F)
 ```
@@ -92,7 +92,7 @@ saveRDS(comboSummary, "temp/complexSpectraSummary.RDS")
 
 # Create Complex Spectra from Selections
 
-```{r, warning=T, message=T}
+```{r createSpectra}
 features <- readRDS("temp/features.RDS")
 
 
@@ -133,7 +133,7 @@ saveRDS(mlFeat, file = "temp/complexFeatures.RDS")
 
 # Make some pretty figures
 
-```{r}
+```{r libraryDistro}
 specInfo %>% 
   group_by(species) %>%
   mutate(num = length(id)) %>%
