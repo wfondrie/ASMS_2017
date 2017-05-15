@@ -236,6 +236,6 @@ testDatList <- map(trainIdx, createFeatureTbl,
                     mzTol = 2.5,
                     testSet = T)
 
-saveRDS(testDatList, file = "temp/")
+saveRDS(testDatList, file = "temp/testDatList.RDS")
 ```
 
