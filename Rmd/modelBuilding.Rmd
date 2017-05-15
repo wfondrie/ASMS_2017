@@ -1,0 +1,113 @@
+---
+title: "Building Models From Glycolipid MALDI-TOF-MS Extracted From Pure Culture"
+Author: "William E Fondrie"
+Date: "4/9/17"
+output: html_notebook
+---
+
+
+```{r setup, include = F}
+knitr::opts_knit$set(root.dir = "..")
+```
+
+```{r loadLibraries, results = "hide", echo = F}
+library(plyr)
+library(tidyverse)
+library(MALDIquant)
+library(MALDIquantForeign)
+library(caret)
+library(PRROC)
+library(stringr)
+
+source("R/preProcessSpec.R")
+source("R/extract.R")
+
+set.seed(1832939)
+```
+
+
+## Load Mass Spectra and Extract Peaks
+```{r importData}
+files <- list.files("data/smallLib", 
+                    full.names = T, 
+                    pattern = "mzXML$",
+                    recursive = T)
+files <- sample(files, 100)
+
+specInfo <- tibble(fname = files) %>%
+    mutate(type = str_match(fname, "([^\\^/]+)[\\/][^\\^/]+mzXML$")[ , 2],
+           id = str_match(fname, "([^\\^/]+).mzXML$")[ , 2],
+           AbRes = as.factor(ifelse(str_detect(type, "Acinetobacter baumannii - res"), "pos", "neg")),
+           KpRes = as.factor(ifelse(str_detect(type, "Klebsiella pneumoniae - res"), "pos", "neg")))
+
+
+
+trainIdx <- list(AbRes = list(idx = createDataPartition(specInfo$AbRes, p = 0.6, list = F),
+                              regex = "Acinetobacter baumannii - res"),
+                 KpRes = list(idx = createDataPartition(specInfo$KpRes, p = 0.6, list = F),
+                              regex ="Klebsiella pneumoniae - res"))
+
+```
+
+```{r}
+determineFeatures <- function(trainList, n = 20) {
+    # Preprocess spectra
+    spec <- preProcessSpec(files[trainList$idx], hws = 80)
+    multiSpecIdx <- map_lgl(spec, ~ metaData(.)$num > 1)
+    spec <- spec[!multiSpecIdx]
+
+    # Detect peaks
+    peaks <- detectPeaks(spec, halfWindowSize = 80, SNR = 5)
+    peaks <- binPeaks(peaks, tolerance = 0.5)
+    
+    # extract peaks
+    peakDat <- extractPeaks(peaks, spec)
+    
+    # extract features
+    features <- peakDat %>%
+        mutate(sel = str_detect(type, trainList$regex)) %>%
+        #filter(sel) %>%
+        group_by(sel, mz) %>%
+        summarize(relInt = sum(relInt)) %>%
+        group_by(sel) %>%
+        mutate(relInt = relInt / max(relInt)) %>%
+        arrange(desc(relInt)) %>%
+        filter(relInt >= relInt[n]) %>%
+        arrange(desc(mz))
+    
+    return(features)
+}
+
+featureList <- map(trainIdx, determineFeatures)
+
+features <- tibble(response = names(featureList), featList = featureList) %>%
+    unnest() %>%
+    select(response, mz)
+
+features <- unique(features)
+```
+
+# Extract features from Spectra
+```{r extractFeatures}
+spectbl <- map_df(spec, extractSpectra) %>% mutate(type = as.factor(type), id = as.factor(id))
+
+feattbl <- spectbl %>%
+    group_by(id) %>%
+    do(extractFeatures(., featureVec = features$mz, tol = 2.5))
+
+```
+
+
+# Prepare for model tuning
+```{r}
+# Wide df
+mlFeat <- feattbl %>%
+    select(id, type, feat, relInt) %>%
+    spread(key = feat, value = relInt) %>%
+    mutate(Ab = ifelse(str_detect(type, "Acinetobacter baumannii"), "pos", "neg"),
+           Kp = ifelse(str_detect(type, "Klebsiella pneumoniae"), "pos", "neg"),
+           AbRes = ifelse(str_detect(type, "i - r"), "pos", "neg"),
+           KpRes = ifelse(str_detect(type, "e - r"), "pos", "neg"))
+```
+
+
