@@ -223,9 +223,12 @@ KpSusTune <- train(x = KpSusVars,
 
 # Save Models
 ```{r saveModels}
-modelList <- list(AbResTune, AbSusTune, KpResTune, KpSusTune)
+modelList <- list(AbResTune = AbResTune, 
+                  AbSusTune = AbSusTune, 
+                  KpResTune = KpResTune, 
+                  KpSusTune = KpSusTune)
 
-saveRDS(modelList, file = "results/modelList")
+saveRDS(modelList, file = "results/modelList.RDS")
 
 ```
 

@@ -1,16 +1,256 @@
 ---
-title: "R Notebook"
-output: html_notebook
+title: "Evaluating Ab and Kp Models"
+output: github_document
 ---
 
-This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
-
-Try executing this chunk by clicking the *Run* button within the chunk or by placing your cursor inside it and pressing *Ctrl+Shift+Enter*. 
-
-```{r}
-
+```{r setup, include = FALSE}
+knitr::opts_knit$set(root.dir = "..")
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
 ```
 
-Add a new chunk by clicking the *Insert Chunk* button on the toolbar or by pressing *Ctrl+Alt+I*.
+# Load Libraries
 
-When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
+```{r loadLibraries, results = "hide", echo = FALSE}
+library(plyr, quietly = T)
+library(tidyverse, quietly = T)
+library(MALDIquant, quietly = T)
+library(MALDIquantForeign, quietly = T)
+library(caret, quietly = T)
+library(PRROC, quietly = T)
+library(stringr, quietly = T)
+library(doParallel, quietly = T)
+
+source("R/preProcessSpec.R")
+source("R/extract.R")
+source("R/ggplotTheme.R")
+
+set.seed(73239)                        # For reproducibility
+```
+
+# Load Models and Test Set
+
+```{r loadModels}
+modelList <- readRDS("results/modelList")
+
+testSets <- readRDS("temp/testDatList.RDS")
+```
+
+```{r AbModels}
+AbRes <- tibble(obs = testSets$AbRes$AbRes)
+AbRes$pred <- predict(modelList[[1]], testSets$AbRes)
+p <- predict(modelList[[1]], testSets$AbRes, type = "prob")
+AbRes <- cbind(AbRes, p)
+
+confusionMatrix(data = AbRes$pred, reference = AbRes$obs, positive = "pos")
+
+AbResPR <- pr.curve(AbRes$pos[AbRes$obs == "pos"], 
+                    AbRes$pos[AbRes$obs == "neg"], curve = T)
+
+AbResROC <- roc.curve(AbRes$pos[AbRes$obs == "pos"], 
+                      AbRes$pos[AbRes$obs == "neg"], curve = T)
+
+# Susceptible
+AbSus <- tibble(obs = testSets$AbSus$AbSus)
+AbSus$pred <- predict(modelList[[2]], testSets$AbSus)
+p <- predict(modelList[[2]], testSets$AbSus, type = "prob")
+AbSus <- cbind(AbSus, p)
+
+confusionMatrix(data = AbSus$pred, reference = AbSus$obs, positive = "pos")
+
+AbSusPR <- pr.curve(AbSus$pos[AbSus$obs == "pos"], 
+                    AbSus$pos[AbSus$obs == "neg"], curve = T)
+
+AbSusROC <- roc.curve(AbSus$pos[AbSus$obs == "pos"], 
+                      AbSus$pos[AbSus$obs == "neg"], curve = T)
+```
+
+```{r KpModels}
+KpRes <- tibble(obs = testSets$KpRes$KpRes)
+KpRes$pred <- predict(modelList[[3]], testSets$KpRes)
+p <- predict(modelList[[3]], testSets$KpRes, type = "prob")
+KpRes <- cbind(KpRes, p)
+
+confusionMatrix(data = KpRes$pred, reference = KpRes$obs, positive = "pos")
+
+KpResPR <- pr.curve(KpRes$pos[KpRes$obs == "pos"], 
+                    KpRes$pos[KpRes$obs == "neg"], curve = T)
+
+KpResROC <- roc.curve(KpRes$pos[KpRes$obs == "pos"], 
+                      KpRes$pos[KpRes$obs == "neg"], curve = T)
+
+KpSus <- tibble(obs = testSets$KpSus$KpSus)
+KpSus$pred <- predict(modelList[[4]], testSets$KpSus)
+p <- predict(modelList[[4]], testSets$KpSus, type = "prob")
+KpSus <- cbind(KpSus, p)
+
+confusionMatrix(data = KpSus$pred, reference = KpSus$obs, positive = "pos")
+
+KpSusPR <- pr.curve(KpSus$pos[KpSus$obs == "pos"], 
+                    KpSus$pos[KpSus$obs == "neg"], curve = T)
+
+KpSusROC <- roc.curve(KpSus$pos[KpSus$obs == "pos"], 
+                      KpSus$pos[KpSus$obs == "neg"], curve = T)
+```
+
+# Plot Curves
+```{r plotAb}
+prnames <- c("Recall", "Precision", "threshold")
+prAb <- as.tibble(rbind(AbResPR$curve, AbSusPR$curve))
+names(prAb) <- prnames
+
+labsAb <- c(paste0("Resistant, AUC = ", round(AbResPR$auc.integral, 2)),
+            paste0("Susceptible, AUC = ", round(AbSusPR$auc.integral, 2)))
+
+prAb %>%
+    mutate(cond = c(rep(labsAb[1], nrow(AbResPR$curve)),
+                    rep(labsAb[2], nrow(AbSusPR$curve)))) %>%
+    ggplot(aes(x = Recall, y = Precision, color = cond)) +
+    geom_path(size = 1) + 
+    coolTheme +
+    theme(legend.position = c(0.05,0.05),
+          legend.justification = c(0,0),
+          legend.title = element_blank()) +
+    coord_equal() +
+    ggtitle("Precision-Recall")
+
+ggsave("results/AbPrCurve.png", width = 3.5, height = 3.5)
+
+
+# ROC
+rocnames <- c("Specificity", "Sensitivity", "threshold")
+rocAb <- as.tibble(rbind(AbResROC$curve, AbSusROC$curve))
+names(rocAb) <- rocnames
+
+labsAb2 <- c(paste0("Resistant, AUC = ", round(AbResROC$auc, 2)),
+             paste0("Susceptible, AUC = ", round(AbSusROC$auc, 2)))
+
+rocAb %>%
+    mutate(cond = c(rep(labsAb2[1], nrow(AbResROC$curve)),
+                    rep(labsAb2[2], nrow(AbSusROC$curve)))) %>%
+    ggplot(aes(x = Specificity, y = Sensitivity, color = cond)) +
+    geom_path(size = 1) + 
+    coolTheme +
+    theme(legend.position = c(0.95,0.05),
+          legend.justification = c(1,0),
+          legend.title = element_blank()) +
+    coord_equal() +
+    ggtitle("ROC")
+
+ggsave("results/AbRocCurve.png", width = 3.5, height = 3.5)
+```
+
+```{r plotKp}
+prKp <- as.tibble(rbind(KpResPR$curve, KpSusPR$curve))
+names(prKp) <- prnames
+
+labsKp <- c(paste0("Resistant, AUC = ", round(KpResPR$auc.integral, 2)),
+            paste0("Susceptible, AUC = ", round(KpSusPR$auc.integral, 2)))
+
+prKp %>%
+    mutate(cond = c(rep(labsKp[1], nrow(KpResPR$curve)),
+                    rep(labsKp[2], nrow(KpSusPR$curve)))) %>%
+    ggplot(aes(x = Recall, y = Precision, color = cond)) +
+    geom_path(size = 1) + 
+    coolTheme +
+    theme(legend.position = c(0.05,0.05),
+          legend.justification = c(0,0),
+          legend.title = element_blank()) +
+    coord_equal() +
+    ggtitle("Precision-Recall")
+
+ggsave("results/KpPrCurve.png", width = 3.5, height = 3.5)
+
+
+# ROC
+rocKp <- as.tibble(rbind(KpResROC$curve, KpSusROC$curve))
+names(rocKp) <- rocnames
+
+labsKp2 <- c(paste0("Resistant, AUC = ", round(KpResROC$auc, 2)),
+             paste0("Susceptible, AUC = ", round(KpSusROC$auc, 2)))
+
+rocKp %>%
+    mutate(cond = c(rep(labsKp2[1], nrow(KpResROC$curve)),
+                    rep(labsKp2[2], nrow(KpSusROC$curve)))) %>%
+    ggplot(aes(x = Specificity, y = Sensitivity, color = cond)) +
+    geom_path(size = 1) + 
+    coolTheme +
+    theme(legend.position = c(0.95,0.05),
+          legend.justification = c(1,0),
+          legend.title = element_blank()) +
+    coord_equal() +
+    ggtitle("ROC")
+
+ggsave("results/KpRocCurve.png", width = 3.5, height = 3.5)
+```
+
+# Evaluate Complex Spectra
+
+```{r}
+complexSpec <- readRDS("temp/complexFeatures.RDS")
+complexSpec <- complexSpec %>%
+    mutate(AbRes = ifelse(AbRes, "pos", "neg"),
+           AbSus = ifelse(AbSus, "pos", "neg"),
+           KpRes = ifelse(KpRes, "pos", "neg"),
+           KpSus = ifelse(KpSus, "pos", "neg"))
+
+cAbRes <- tibble(obs = complexSpec$AbRes)
+cAbRes$pred <- predict(modelList[[1]], complexSpec, type = "raw")
+
+p <- predict(modelList[[1]], complexSpec, type = "prob")
+cAbRes <- cbind(cAbRes, p)
+
+confusionMatrix(data = cAbRes$pred, reference = cAbRes$obs, positive = "pos")
+
+cAbResPR <- pr.curve(cAbRes$pos[cAbRes$obs == "pos"], 
+                     cAbRes$pos[cAbRes$obs == "neg"], curve = T)
+
+cAbResROC <- roc.curve(cAbRes$pos[cAbRes$obs == "pos"], 
+                       cAbRes$pos[cAbRes$obs == "neg"], curve = T)
+
+
+# Susceptible
+cAbSus <- tibble(obs = complexSpec$AbSus)
+cAbSus$pred <- predict(modelList[[2]], complexSpec, type = "raw")
+p <- predict(modelList[[2]], complexSpec, type = "prob")
+cAbSus <- cbind(cAbSus, p)
+
+confusionMatrix(data = cAbSus$pred, reference = cAbSus$obs, positive = "pos")
+
+cAbSusPR <- pr.curve(cAbSus$pos[cAbSus$obs == "pos"], 
+                     cAbSus$pos[cAbSus$obs == "neg"], curve = T)
+
+cAbSusROC <- roc.curve(cAbSus$pos[cAbSus$obs == "pos"], 
+                       cAbSus$pos[cAbSus$obs == "neg"], curve = T)
+```
+
+```{r}
+cKpRes <- tibble(obs = complexSpec$KpRes)
+cKpRes$pred <- predict(modelList[[3]], complexSpec, type = "raw")
+
+p <- predict(modelList[[3]], complexSpec, type = "prob")
+cKpRes <- cbind(cKpRes, p)
+
+confusionMatrix(data = cKpRes$pred, reference = cKpRes$obs, positive = "pos")
+
+cKpResPR <- pr.curve(cKpRes$pos[cKpRes$obs == "pos"], 
+                     cKpRes$pos[cKpRes$obs == "neg"], curve = T)
+
+cKpResROC <- roc.curve(cKpRes$pos[cKpRes$obs == "pos"], 
+                       cKpRes$pos[cKpRes$obs == "neg"], curve = T)
+
+
+# Susceptible
+cKpSus <- tibble(obs = complexSpec$KpSus)
+cKpSus$pred <- predict(modelList[[4]], complexSpec, type = "raw")
+p <- predict(modelList[[4]], complexSpec, type = "prob")
+cKpSus <- cbind(cKpSus, p)
+
+confusionMatrix(data = cKpSus$pred, reference = cKpSus$obs, positive = "pos")
+
+cKpSusPR <- pr.curve(cAbSus$pos[cKpSus$obs == "pos"], 
+                     cAbSus$pos[cKpSus$obs == "neg"], curve = T)
+
+cKpSusROC <- roc.curve(cAbSus$pos[cKpSus$obs == "pos"], 
+                       cAbSus$pos[cKpSus$obs == "neg"], curve = T)
+```
+
