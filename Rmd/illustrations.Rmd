@@ -1,0 +1,15 @@
+---
+title: "Strategy Illustrations"
+output: github_document
+---
+
+# Feature Creation
+
+```{r}
+plot(cars)
+```
+
+# Complex Spectra Generation
+
+
+# Real vs Simulated Complex Spectra
