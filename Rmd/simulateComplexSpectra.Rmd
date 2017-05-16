@@ -69,7 +69,7 @@ selectLinearCombos <- function(n, info) {
 }
 
 
-numSpecies <- rep(1:20, 500)
+numSpecies <- rep(1:20, 100)
 
 combos <- tibble(spec_id = as.factor(paste0("spec_", 1:length(numSpecies))),
                  comp = map(numSpecies, selectLinearCombos, info = specInfo)) %>%
