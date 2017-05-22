@@ -31,7 +31,7 @@ set.seed(6578548)
 # Get file info
 
 ```{r importSpectra}
-files <- list.files("data/smallLib", 
+files <- list.files("data/fullLib", 
                     full.names = T, 
                     pattern = "mzXML$",
                     recursive = T)

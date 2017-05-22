@@ -3,13 +3,238 @@ title: "Strategy Illustrations"
 output: github_document
 ---
 
+```{r setup, include = FALSE}
+knitr::opts_knit$set(root.dir = "..")
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+```
+
+```{r loadLibraries, results = "hide", echo = FALSE}
+library(plyr, quietly = T)
+library(tidyverse, quietly = T)
+library(MALDIquant, quietly = T)
+library(MALDIquantForeign, quietly = T)
+library(caret, quietly = T)
+library(PRROC, quietly = T)
+library(stringr, quietly = T)
+library(forcats, quietly = T)
+library(doParallel, quietly = T)
+
+source("R/preProcessSpec.R")
+source("R/extract.R")
+source("R/ggplotTheme.R")
+
+#set.seed(1832939)# For reproducibility
+set.seed(6554)
+
+cl <- makeCluster(detectCores() - 1)       # For parallelization
+registerDoParallel(cl)
+```
 # Feature Creation
 
 ```{r}
-plot(cars)
+
 ```
 
 # Complex Spectra Generation
 
+```{r}
+
+```
+
 
 # Real vs Simulated Complex Spectra
+
+```{r}
+
+colRanges <- tibble(minMz = c(1300, 1440, 1810),
+                    maxMz = c(1430, 1640, 2100),
+                    lab = c("S. aureus",
+                            "P. aeruginosa",
+                            "K. pneumoniae"))
+
+shortenName <- function(origName) {
+  paste0(str_match(origName, "^."),
+         ". ",
+         str_match(origName, " ([^ ]+)")[ , 2])
+}
+
+
+# import and plot individual spec
+soi <- c("S aureus NRS384 1 10282016",
+         "P aeruginosa BE399 4 10282016",
+         "K pneumoniae TBE818 5 10132016")
+files <- list.files("data/fullLib", 
+                    full.names = T, 
+                    pattern = "mzXML$",
+                    recursive = T)
+
+files <- map_chr(soi, ~files[str_detect(files, .)])
+
+spec <- preProcessSpec(files, hws = 80)
+
+specDat <- map_df(spec, extractSpectra) 
+
+spPlot <- specDat %>%
+  mutate(spc = shortenName(type),
+         relInt = relInt * 100,
+         mzRange = ifelse(mz > colRanges$minMz[1] & mz < colRanges$maxMz[1] & spc == "S. aureus", 
+                          colRanges$lab[1], NA),
+         mzRange = ifelse(mz > colRanges$minMz[2] & mz < colRanges$maxMz[2] & spc == "P. aeruginosa", 
+                          colRanges$lab[2], mzRange),
+         mzRange = ifelse(mz > colRanges$minMz[3] & mz < colRanges$maxMz[3] & spc == "K. pneumoniae", 
+                          colRanges$lab[3], mzRange)) 
+
+
+spPlot %>%
+  ggplot(aes(x = as.numeric(mz), y = relInt)) +
+  geom_line(size = 0.5) +
+  geom_line(data = spPlot[!is.na(spPlot$mzRange), ], aes(color = mzRange), size = 0.5) +
+  coolTheme +
+  theme(legend.position = "none") +
+  labs(x = "m/z",
+       y = "Relative Intensity") +
+  facet_wrap(~ spc, ncol = 1)
+
+ggsave("results/individualSpec.png", width = 4, height = 4)
+
+
+ # Make combined Spectrum ----------------------------------------------------------------------
+cmb <- specDat %>% 
+  mutate(spec_id = "spec_1") %>%
+  group_by(spec_id ,id, type) %>%
+  do(massSpecObj = createMassSpectrum(mass = .$mz, intensity = .$relInt, 
+                                      metaData = list(file = "a"))) %>%
+  group_by(spec_id) %>%
+  do(massSpecObj = averageMassSpectra(.$massSpecObj, method = "sum"))
+
+
+cmbSpec <- extractSpectra(cmb$massSpecObj[[1]])
+
+cmbSpecNorm <-  cmbSpec %>%
+  mutate(relInt = relInt / max(relInt) * 100,
+         type = "combined",
+         id = "combined") %>%
+  group_by(mz) %>%
+  mutate(mzRange = ifelse(mz > colRanges$minMz[1] & mz < colRanges$maxMz[1], 
+                          colRanges$lab[1], NA),
+         mzRange = ifelse(mz > colRanges$minMz[2] & mz < colRanges$maxMz[2], 
+                          colRanges$lab[2], mzRange),
+         mzRange = ifelse(mz > colRanges$minMz[3] & mz < colRanges$maxMz[3], 
+                          colRanges$lab[3], mzRange))
+
+cmbSpecNorm %>%
+  ggplot(aes(x = as.numeric(mz), y = relInt)) +
+  geom_line(size = 0.5) +
+  geom_line(data = cmbSpecNorm[!is.na(cmbSpecNorm$mzRange), ], aes(color = mzRange), size = 0.5) +
+  coolTheme +
+  theme(legend.position = "none") +
+  labs(title = "Simulated",
+       x = "m/z",
+       y = "Relative Intensity")
+
+ggsave("results/inSilicoSpec.png", width = 4, height = 2.25)
+
+# Import and plot experimental mixed spectrum --------------------------------------------------------
+mixFile <- list.files("data/mixSpec", pattern = ".mzXML", full.names = T)[1]
+origSpec <- preProcessSpec(mixFile, hws = 80)
+origSpecDat <- map_df(origSpec, extractSpectra)
+
+origSpecNorm <- origSpecDat %>%
+  group_by(mz) %>%
+  summarize(relInt = sum(relInt)) %>%
+  ungroup() %>%
+  mutate(relInt = relInt / max(relInt) * 100,
+         type = "combined",
+         id = "combined") %>%
+  mutate(mzRange = ifelse(mz > colRanges$minMz[1] & mz < colRanges$maxMz[1], 
+                          colRanges$lab[1], NA),
+         mzRange = ifelse(mz > colRanges$minMz[2] & mz < colRanges$maxMz[2], 
+                          colRanges$lab[2], mzRange),
+         mzRange = ifelse(mz > colRanges$minMz[3] & mz < colRanges$maxMz[3], 
+                          colRanges$lab[3], mzRange))
+
+origSpecNorm %>%
+  ggplot(aes(x = as.numeric(mz), y = relInt)) +
+  geom_line(size = 0.5) +
+  geom_line(data = origSpecNorm[!is.na(origSpecNorm$mzRange), ], aes(color = mzRange), size = 0.5) +
+  coolTheme +
+  theme(legend.position = "none") +
+  labs(title = "Experimental",
+       x = "m/z",
+       y = "Relative Intensity")
+
+ggsave("results/experimentalSpec.png", width = 4, height = 2.25)
+
+
+
+
+```
+
+# Increasing Spectral Complexity
+
+```{r}
+# Illustration of increasing complexity
+files <- list.files("data/fullLib", 
+                    full.names = T, 
+                    pattern = "mzXML$",
+                    recursive = T)
+
+specInfo <- tibble(fname = files) %>%
+  mutate(type = str_match(fname, "([^\\^/]+)[\\/][^\\^/]+mzXML$")[ , 2],
+         id = str_match(fname, "([^\\^/]+).mzXML$")[ , 2],
+         species = str_match(type, "^[^ ]+ [^ ]+"))
+
+speciesSelect <- specInfo %>%
+  group_by(species) %>%
+  summarize(num = length(id)) %>%
+  sample_n(size = 40)
+
+selected <- speciesSelect %>%
+  left_join(specInfo) %>%
+  group_by(species) %>%
+  sample_n(size = 1) %>%
+  ungroup() %>%
+  mutate(coeff = runif(40, 0, 1))
+
+files <- files[files %in% selected$fname]
+
+spec <- preProcessSpec(files, hws = 80)
+
+specDat <- map_df(spec, extractSpectra)
+
+specFull <- selected %>%
+  select(id, coeff) %>%
+  left_join(specDat) %>%
+  mutate(relInt = relInt * coeff)
+
+cmb <- map_df(c(1, 2, 5, 10, 20, 40), function(x) {
+  sel <- selected$id[1:x]
+  dat <- filter(specFull, id %in% sel)
+  
+  cmb <- dat %>%
+    mutate(spec_id = as.factor(paste0("spec_", x))) %>%
+    group_by(spec_id, id, type) %>%
+    do(massSpecObj = createMassSpectrum(mass = .$mz, intensity = .$relInt, 
+                                        metaData = 
+                                          list(file = paste0("/cmb/", .$spec_id[1], ".mzXML")))) %>%
+    group_by(spec_id) %>%
+    do(massSpecObj = averageMassSpectra(.$massSpecObj, method = "sum"))
+  
+    return(cmb)
+})
+
+cmbDat <- map_df(cmb$massSpecObj, extractSpectra)
+
+cmbDat %>%
+  mutate(relInt = relInt * 100,
+         lab = paste0(gsub("spec_", "", id), " Species"),
+         lab = fct_reorder(lab, as.numeric(str_match(lab, "^([^ ]+) ")[ , 2]))) %>%
+  ggplot(aes(x = as.numeric(mz), y = relInt)) +
+  geom_line(size = 0.5) +
+  coolTheme +
+  theme(legend.position = "none") +
+  labs(x = "m/z",
+       y = "Relative Intensity") +
+  facet_wrap(~ lab, ncol = 2)
+```
+
