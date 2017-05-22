@@ -31,11 +31,11 @@ set.seed(6578548)
 # Get file info
 
 ```{r importSpectra}
-files <- list.files("data/smallLib", 
+files <- list.files("data/fullLib", 
                     full.names = T, 
                     pattern = "mzXML$",
                     recursive = T)
-files <- sample(files, 200)
+#files <- sample(files, 200)
 
 specInfo <- tibble(fname = files) %>%
     mutate(type = str_match(fname, "([^\\^/]+)[\\/][^\\^/]+mzXML$")[ , 2],
@@ -69,7 +69,7 @@ selectLinearCombos <- function(n, info) {
 }
 
 
-numSpecies <- rep(1:20, 100)
+numSpecies <- rep(c(1, 5, 10, 20), 2)
 
 
 combos <- tibble(spec_id = as.factor(paste0("spec_", 1:length(numSpecies))),
@@ -83,10 +83,10 @@ comboSummary <- combos %>%
             KpResCoeff = ifelse(any(KpRes == "pos"), coeff[KpRes == "pos"], 0),
             AbSusCoeff = ifelse(any(AbSus == "pos"), coeff[AbSus == "pos"], 0),
             KpSusCoeff = ifelse(any(KpSus == "pos"), coeff[KpSus == "pos"], 0),
-            AbRes = any(AbRes == "pos"),
-            KpRes = any(KpRes == "pos"),
-            AbSus = any(AbSus == "pos"),
-            KpSus = any(KpSus == "pos"))
+            AbRes = ifelse(any(AbRes == "pos"), "pos", "neg"),
+            KpRes = ifelse(any(KpRes == "pos"), "pos", "neg"),
+            AbSus = ifelse(any(AbSus == "pos"), "pos", "neg"),
+            KpSus = ifelse(any(KpSus == "pos"), "pos", "neg"))
 
 saveRDS(comboSummary, file = "temp/complexSpectraSummary.RDS")
 ```
@@ -96,26 +96,31 @@ saveRDS(comboSummary, file = "temp/complexSpectraSummary.RDS")
 ```{r createSpectra}
 features <- readRDS("temp/features.RDS")
 
-
 specList <- preProcessSpec(files, hws = 80)
 multiSpecIdx <- map_lgl(specList, ~ metaData(.)$num > 1)
 specList <- specList[!multiSpecIdx]
 
 spec <- map_df(specList, extractSpectra)
 
-# can create a very large object!
-comboSpec <- ddply(combos, "spec_id", function(x) {
-    x %>%
-        select(spec_id, id, coeff) %>%
-        left_join(spec) %>%
-        mutate(relInt = relInt * coeff) %>%
-        group_by(spec_id, mz) %>%
-        summarize(relInt = sum(relInt)) %>%
+makeComplexSpec <- function(specInfo) {
+    cmb <- specInfo %>%
+        group_by(spec_id, id, type) %>%
+        do(massSpecObj = createMassSpectrum(mass = .$mz, intensity = .$relInt, 
+                                            metaData = 
+                                                list(file = paste0("/cmb/", .$spec_id[1], ".mzXML")))) %>%
         group_by(spec_id) %>%
-        mutate(relInt = relInt / max(relInt))
-}, .parallel = T)
+        do(massSpecObj = averageMassSpectra(.$massSpecObj, method = "sum"))
+    
+    newSpec <- extractSpectra(cmb$massSpecObj[[1]])
+    return(newSpec)
+}
 
-comboSpec %>% rename(id = spec_id)
+comboSpec <- combos %>%
+    left_join(spec) %>%
+    group_by(spec_id) %>%
+    do(makeComplexSpec(.)) %>%
+    ungroup() %>%
+    select(-spec_id)
 
 feattbl <- comboSpec %>%
   group_by(id) %>%
@@ -128,8 +133,6 @@ mlFeat <- feattbl %>%
   ungroup() %>%
   spread(key = feat, value = relInt, fill = 0) %>%
   left_join(comboSummary, by = c("id" = "spec_id")) 
-
-rm(comboSpec)
 
 saveRDS(mlFeat, file = "temp/complexFeatures.RDS")
 ```
