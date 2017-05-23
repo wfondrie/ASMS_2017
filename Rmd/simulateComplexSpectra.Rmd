@@ -71,6 +71,7 @@ selectLinearCombos <- function(n, info) {
 
 numSpecies <- rep(c(1, 5, 10, 20), 2)
 
+
 combos <- tibble(spec_id = as.factor(paste0("spec_", 1:length(numSpecies))),
                  comp = map(numSpecies, selectLinearCombos, info = specInfo)) %>%
   unnest()
