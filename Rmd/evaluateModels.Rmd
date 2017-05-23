@@ -187,11 +187,6 @@ ggsave("results/KpRocCurve.png", width = 3.5, height = 3.5)
 
 ```{r}
 complexSpec <- readRDS("temp/complexFeatures.RDS")
-complexSpec <- complexSpec %>%
-    mutate(AbRes = ifelse(AbRes, "pos", "neg"),
-           AbSus = ifelse(AbSus, "pos", "neg"),
-           KpRes = ifelse(KpRes, "pos", "neg"),
-           KpSus = ifelse(KpSus, "pos", "neg"))
 
 cAbRes <- tibble(obs = complexSpec$AbRes)
 cAbRes$pred <- predict(modelList[[1]], complexSpec, type = "raw")
@@ -208,6 +203,17 @@ cAbResROC <- roc.curve(cAbRes$pos[cAbRes$obs == "pos"],
                        cAbRes$pos[cAbRes$obs == "neg"], curve = T)
 
 
+
+cAbRes <- cbind(cAbRes, select(complexSpec, n, AbResCoeff))
+
+cAbResSumm <- cAbRes %>%
+  group_by(n) %>%
+  do(pr = pr.curve(.$pos[.$obs == "pos"], .$pos[.$obs == "neg"]),
+     roc = roc.curve(.$pos[.$obs == "pos"], .$pos[.$obs == "neg"])) %>%
+  mutate(prAUC = pr$auc.integral,
+         rocAUC = roc$auc,
+         ex = "Ab Resistant")
+
 # Susceptible
 cAbSus <- tibble(obs = complexSpec$AbSus)
 cAbSus$pred <- predict(modelList[[2]], complexSpec, type = "raw")
@@ -221,6 +227,17 @@ cAbSusPR <- pr.curve(cAbSus$pos[cAbSus$obs == "pos"],
 
 cAbSusROC <- roc.curve(cAbSus$pos[cAbSus$obs == "pos"], 
                        cAbSus$pos[cAbSus$obs == "neg"], curve = T)
+
+
+cAbSus <- cbind(cAbSus, select(complexSpec, n, AbSusCoeff))
+
+cAbSusSumm <- cAbSus %>%
+  group_by(n) %>%
+  do(pr = pr.curve(.$pos[.$obs == "pos"], .$pos[.$obs == "neg"]),
+     roc = roc.curve(.$pos[.$obs == "pos"], .$pos[.$obs == "neg"])) %>%
+  mutate(prAUC = pr$auc.integral,
+         rocAUC = roc$auc,
+         ex = "Ab Susceptible")
 ```
 
 ```{r}
@@ -238,6 +255,16 @@ cKpResPR <- pr.curve(cKpRes$pos[cKpRes$obs == "pos"],
 cKpResROC <- roc.curve(cKpRes$pos[cKpRes$obs == "pos"], 
                        cKpRes$pos[cKpRes$obs == "neg"], curve = T)
 
+cKpRes <- cbind(cKpRes, select(complexSpec, n, KpResCoeff))
+
+cKpResSumm <- cKpRes %>%
+  group_by(n) %>%
+  do(pr = pr.curve(.$pos[.$obs == "pos"], .$pos[.$obs == "neg"]),
+     roc = roc.curve(.$pos[.$obs == "pos"], .$pos[.$obs == "neg"])) %>%
+  mutate(prAUC = pr$auc.integral,
+         rocAUC = roc$auc,
+         ex = "Kp Resistant")
+
 
 # Susceptible
 cKpSus <- tibble(obs = complexSpec$KpSus)
@@ -252,5 +279,20 @@ cKpSusPR <- pr.curve(cAbSus$pos[cKpSus$obs == "pos"],
 
 cKpSusROC <- roc.curve(cAbSus$pos[cKpSus$obs == "pos"], 
                        cAbSus$pos[cKpSus$obs == "neg"], curve = T)
+
+cKpSus <- cbind(cKpSus, select(complexSpec, n, KpSusCoeff))
+
+cKpSusSumm <- cKpSus %>%
+  group_by(n) %>%
+  do(pr = pr.curve(.$pos[.$obs == "pos"], .$pos[.$obs == "neg"]),
+     roc = roc.curve(.$pos[.$obs == "pos"], .$pos[.$obs == "neg"])) %>%
+  mutate(prAUC = pr$auc.integral,
+         rocAUC = roc$auc,
+         ex = "Ab Susceptible")
+```
+
+```{r}
+
+
 ```
 
