@@ -27,7 +27,7 @@ source("R/ggplotTheme.R")
 
 set.seed(6578548)  
 
-cl <- makeCluster(12)       # For parallelization
+cl <- makeCluster(detectCores() - 1)       # For parallelization
 registerDoParallel(cl)
 ```
 
