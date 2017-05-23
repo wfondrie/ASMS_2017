@@ -25,7 +25,10 @@ source("R/preProcessSpec.R")
 source("R/extract.R")
 source("R/ggplotTheme.R")
 
-set.seed(6578548)    
+set.seed(6578548)  
+
+cl <- makeCluster(12)       # For parallelization
+registerDoParallel(cl)
 ```
 
 # Get file info
@@ -35,7 +38,7 @@ files <- list.files("data/fullLib",
                     full.names = T, 
                     pattern = "mzXML$",
                     recursive = T)
-#files <- sample(files, 200)
+files <- sample(files, 200)
 
 specInfo <- tibble(fname = files) %>%
     mutate(type = str_match(fname, "([^\\^/]+)[\\/][^\\^/]+mzXML$")[ , 2],
@@ -115,12 +118,20 @@ makeComplexSpec <- function(specInfo) {
     return(newSpec)
 }
 
-comboSpec <- ddply(combos, "spec_id", function(x) {
-  x %>%
-    left_join(spec) %>%
-    do(makeComplexSpec(.)) %>%
-    select(-spec_id)
-})
+
+f <- function(x, s) {
+    x %>%
+    left_join(s) %>%
+    do(makeComplexSpec(.))
+}
+
+comboSpec <- ddply(combos, "spec_id", f, spec,
+                   .parallel = T,
+                   .paropts = list(
+                     .packages = c("dplyr", "MALDIquant", "stringr"),
+                     .export = c("makeComplexSpec", "extractSpectra")))
+
+
 
 feattbl <- comboSpec %>%
   group_by(id) %>%
