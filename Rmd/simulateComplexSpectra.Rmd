@@ -69,7 +69,7 @@ selectLinearCombos <- function(n, info) {
 }
 
 
-numSpecies <- rep(c(1, 5, 10, 20), 2)
+numSpecies <- rep(c(2, 5, 10, 20), 1000)
 
 
 combos <- tibble(spec_id = as.factor(paste0("spec_", 1:length(numSpecies))),
@@ -115,12 +115,12 @@ makeComplexSpec <- function(specInfo) {
     return(newSpec)
 }
 
-comboSpec <- combos %>%
+comboSpec <- ddply(combos, "spec_id", function(x) {
+  x %>%
     left_join(spec) %>%
-    group_by(spec_id) %>%
     do(makeComplexSpec(.)) %>%
-    ungroup() %>%
     select(-spec_id)
+})
 
 feattbl <- comboSpec %>%
   group_by(id) %>%
