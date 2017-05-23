@@ -29,16 +29,73 @@ set.seed(6554)
 cl <- makeCluster(detectCores() - 1)       # For parallelization
 registerDoParallel(cl)
 ```
+
 # Feature Creation
 
 ```{r}
+features <- readRDS("temp/features.RDS")
+features <- filter(features, response == "AbRes")
 
-```
+featFiles <- c(list.files("data/fullLib/Acinetobacter baumannii - res", 
+                    full.names = T, 
+                    pattern = "mzXML$",
+                    recursive = T)[1],
+                list.files("data/fullLib/Acinetobacter baumannii - sen", 
+                    full.names = T, 
+                    pattern = "mzXML$",
+                    recursive = T)[1])
 
-# Complex Spectra Generation
+spec <- preProcessSpec(featFiles, hws = 80)
 
-```{r}
+specDat <- map_df(spec, extractSpectra) %>%
+    mutate(class = gsub("Acinetobacter baumannii", "Ab", type),
+           class = gsub("- res", "resistant", class),
+           class = gsub("- sen", "susceptible", class),
+           relInt = relInt * 100)
 
+
+specDat %>%
+    ggplot(aes(x = mz, y = relInt)) +
+    geom_line() +
+    geom_point(data = features, aes(x = mz), y = -3, color = "blue", shape = 73, size = 3) +
+    coolTheme +
+    facet_wrap(~ class, ncol = 2) +
+    xlab("m/z") +
+    ylab("Relative Intensity")
+
+ggsave("results/featureSelect_1.png", width = 8, height = 3)
+
+maxDf <- specDat %>%
+    filter(mz > max(features$mz) - 2.5,
+           mz < max(features$mz) + 2.5) %>%
+    group_by(class) %>%
+    summarize(mz = mz[relInt == max(relInt)],
+              relInt = max(relInt))
+    
+specDat %>%
+    ggplot(aes(x = mz, y = relInt)) +
+    annotate("rect", xmin = max(features$mz) - 2.5, xmax = max(features$mz) + 2.5, 
+             ymin = -Inf, ymax = Inf, alpha = 0.1, fill = "blue", color = "blue") +
+    geom_line() +
+    geom_vline(data = features, aes(xintercept = mz), color = "blue", linetype = "dashed") +
+    geom_point(data = maxDf, aes(x = mz, y = relInt + 1.5), color = "black", shape = 8, size = 2) + 
+    coolTheme +
+    facet_wrap(~ class, ncol = 2) +
+    xlim(c(max(features$mz) - 10, max(features$mz) + 10)) +
+    ylim(c(0, 35)) +
+        xlab("m/z") +
+    ylab("Relative Intensity")
+
+ggsave("results/featureSelect_2.png", width = 6, height = 3)
+
+maxDf %>%
+    ggplot(aes(x = class, y = relInt)) +
+    geom_bar(stat = "identity") +
+    coolTheme +
+    theme(axis.title.x = element_blank()) +
+    ylab("Feature Intensity")
+
+ggsave("results/featureSelect_3.png", width = 3, height = 2)
 ```
 
 
