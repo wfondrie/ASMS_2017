@@ -30,7 +30,7 @@ set.seed(73239)                        # For reproducibility
 # Load Models and Test Set
 
 ```{r loadModels}
-modelList <- readRDS("results/modelList")
+modelList <- readRDS("results/modelList.RDS")
 
 testSets <- readRDS("temp/testDatList.RDS")
 ```
@@ -117,7 +117,7 @@ ggsave("results/AbPrCurve.png", width = 3.5, height = 3.5)
 
 
 # ROC
-rocnames <- c("Specificity", "Sensitivity", "threshold")
+rocnames <- c("1 - Specificity", "Sensitivity", "threshold")
 rocAb <- as.tibble(rbind(AbResROC$curve, AbSusROC$curve))
 names(rocAb) <- rocnames
 
@@ -127,7 +127,7 @@ labsAb2 <- c(paste0("Resistant, AUC = ", round(AbResROC$auc, 2)),
 rocAb %>%
     mutate(cond = c(rep(labsAb2[1], nrow(AbResROC$curve)),
                     rep(labsAb2[2], nrow(AbSusROC$curve)))) %>%
-    ggplot(aes(x = Specificity, y = Sensitivity, color = cond)) +
+    ggplot(aes(x = `1 - Specificity`, y = Sensitivity, color = cond)) +
     geom_path(size = 1) + 
     coolTheme +
     theme(legend.position = c(0.95,0.05),
@@ -171,7 +171,7 @@ labsKp2 <- c(paste0("Resistant, AUC = ", round(KpResROC$auc, 2)),
 rocKp %>%
     mutate(cond = c(rep(labsKp2[1], nrow(KpResROC$curve)),
                     rep(labsKp2[2], nrow(KpSusROC$curve)))) %>%
-    ggplot(aes(x = Specificity, y = Sensitivity, color = cond)) +
+    ggplot(aes(x = `1 - Specificity`, y = Sensitivity, color = cond)) +
     geom_path(size = 1) + 
     coolTheme +
     theme(legend.position = c(0.95,0.05),
@@ -288,10 +288,65 @@ cKpSusSumm <- cKpSus %>%
      roc = roc.curve(.$pos[.$obs == "pos"], .$pos[.$obs == "neg"])) %>%
   mutate(prAUC = pr$auc.integral,
          rocAUC = roc$auc,
-         ex = "Ab Susceptible")
+         ex = "Kp Susceptible")
 ```
 
 ```{r}
+
+nFullSumm <- select(cAbResSumm, -pr, -roc) %>%
+  full_join(select(cAbSusSumm, -pr, -roc)) %>%
+  full_join(select(cKpResSumm, -pr, -roc)) %>%
+  full_join(select(cKpSusSumm, -pr, -roc))
+
+nFullSumm %>%
+  ggplot(aes(x = n, y = prAUC, group = ex, color = ex)) +
+  geom_line() +
+  geom_point() +
+  coolTheme
+
+nFullSumm %>%
+  ggplot(aes(x = n, y = rocAUC, group = ex, color = ex)) +
+  geom_line() +
+  geom_point() +
+  coolTheme
+
+
+cAbRes$ex <- "Ab Resistant"
+cAbSus$ex <- "Ab Susceptible"
+cKpRes$ex <- "Kp Resistant"
+cKpSus$ex <- "Kp Susceptible"
+cAbRes <- rename(cAbRes, coeff = AbResCoeff)
+cAbSus <- rename(cAbSus, coeff = AbSusCoeff)
+cKpRes <- rename(cKpRes, coeff = KpResCoeff)
+cKpSus <- rename(cKpSus, coeff = KpSusCoeff)
+
+coeff <- cAbRes %>%
+  full_join(cAbSus) %>%
+  full_join(cKpRes) %>%
+  full_join(cKpSus) %>%
+  filter(coeff > 0) 
+
+coeffSumm <- coeff %>%
+  group_by(ex) %>%
+  summarize(Sen_100 = sum(pred[coeff == 1] == "pos") / length(pred[coeff == 1]),
+            Sen_90 = sum(pred[coeff > 0.9] == "pos") / length(pred[coeff > 0.9]),
+            Sen_80 = sum(pred[coeff > 0.8] == "pos") / length(pred[coeff > 0.8]),
+            Sen_70 = sum(pred[coeff > 0.7] == "pos") / length(pred[coeff > 0.7]),
+            Sen_60 = sum(pred[coeff > 0.6] == "pos") / length(pred[coeff > 0.6]),
+            Sen_50 = sum(pred[coeff > 0.5] == "pos") / length(pred[coeff > 0.5]),
+            Sen_40 = sum(pred[coeff > 0.4] == "pos") / length(pred[coeff > 0.4]),
+            Sen_30 = sum(pred[coeff > 0.3] == "pos") / length(pred[coeff > 0.3]),
+            Sen_20 = sum(pred[coeff > 0.2] == "pos") / length(pred[coeff > 0.2]),
+            Sen_10 = sum(pred[coeff > 0.1] == "pos") / length(pred[coeff > 0.1]),
+            Sen_0 = sum(pred[coeff > 0] == "pos") / length(pred[coeff > 0])) %>%
+  gather(`Weight Threshold`, Sensitivity, -ex) %>%
+  mutate(`Weight Threshold` = as.numeric(gsub("Sen_", "", `Weight Threshold`)))
+
+coeffSumm %>%
+  ggplot(aes(x = `Weight Threshold`, y = Sensitivity, group = ex, color = ex)) +
+  geom_line() +
+  geom_point() +
+  coolTheme
 
 
 ```
