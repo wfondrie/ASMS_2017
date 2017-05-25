@@ -66,13 +66,13 @@ selectLinearCombos <- function(n, info) {
     group_by(species) %>%
     sample_n(size = 1) %>%
     ungroup() %>%
-    mutate(coeff = runif(n, 0, 1))
+    mutate(coeff = runif(n, 0.1, 1))
   
   return(selected)
 }
 
 
-numSpecies <- rep(c(2, 5, 10, 20), 1000)
+numSpecies <- rep(c(1:5), 2000)
 
 
 combos <- tibble(spec_id = as.factor(paste0("spec_", 1:length(numSpecies))),
