@@ -302,13 +302,24 @@ nFullSumm %>%
   ggplot(aes(x = n, y = prAUC, group = ex, color = ex)) +
   geom_line() +
   geom_point() +
-  coolTheme
+  coolTheme +
+  theme(legend.title = element_blank()) +
+  ylab("Precision-Recall AUC") +
+  xlab("Species in Mixture Spectrum")
+
+ggsave("results/complexPR.png", width = 5.5, height = 3.5)
 
 nFullSumm %>%
   ggplot(aes(x = n, y = rocAUC, group = ex, color = ex)) +
   geom_line() +
   geom_point() +
-  coolTheme
+  coolTheme +
+  theme(legend.title = element_blank()) +
+  ylab("ROC AUC") +
+  xlab("Species in Mixture Spectrum")
+
+ggsave("results/complexROC.png", width = 5.5, height = 3.5)
+
 
 
 cAbRes$ex <- "Ab Resistant"
@@ -346,8 +357,9 @@ coeffSumm %>%
   ggplot(aes(x = `Weight Threshold`, y = Sensitivity, group = ex, color = ex)) +
   geom_line() +
   geom_point() +
-  coolTheme
+  coolTheme +
+  theme(legend.title = element_blank())
 
-
+ggsave("results/complexWeights.png", width = 5, height = 4)
 ```
 

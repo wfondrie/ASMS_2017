@@ -26,8 +26,6 @@ source("R/ggplotTheme.R")
 #set.seed(1832939)# For reproducibility
 set.seed(6554)
 
-cl <- makeCluster(detectCores() - 1)       # For parallelization
-registerDoParallel(cl)
 ```
 
 # Feature Creation
@@ -223,6 +221,61 @@ origSpecNorm %>%
 ggsave("results/experimentalSpec.png", width = 4, height = 2.25)
 
 
+# random weights -------------------------------------------------------------------------
+specDat2 <- specDat %>% mutate(spec_id = "Spec_2")
+specDat3 <- specDat %>% mutate(spec_id = "Spec_3")
+specDat4 <- specDat %>% mutate(spec_id = "Spec_4")
+
+specCombo <- specDat2 %>% full_join(specDat3) %>% full_join(specDat4)
+
+idInfo <- tibble(id = as.factor(c("Spec_2", "Spec_3", "Spec_4")),
+                 labs = as.factor(c("0.63 * Kp + 0.59 * Pa + 1.00 * Sa",
+                          "1.00 * Kp + 0.18 * Pa + 0.35 * Sa",
+                          "0.92 * Kp + 1.00 * Pa + 0.13 * Sa")))
+
+set.seed(13476)
+specCombo <- specCombo %>% 
+  group_by(spec_id ,id, type) %>%
+  mutate(coeff = runif(1, 0.1, 1)) %>%
+  group_by(spec_id) %>%
+  mutate(trueCoeff = coeff / max(coeff))
+
+coeffs <- specCombo %>%
+  group_by(spec_id, type) %>%
+  summarise(coeff = trueCoeff[1])
+
+cmb2 <- specCombo %>%
+  group_by(spec_id, id, type) %>% 
+  mutate(relInt = relInt * coeff) %>% 
+  do(massSpecObj = createMassSpectrum(mass = .$mz, intensity = .$relInt, 
+                                      metaData = 
+                                        list(file =paste0("/combined/", .$spec_id[[1]], ".mzXML")))) %>%
+  group_by(spec_id) %>%
+  do(massSpecObj = averageMassSpectra(.$massSpecObj, method = "sum"))
+
+specCmb2 <- map_df(cmb2$massSpecObj, extractSpectra)
+
+specCmb2 <-  specCmb2 %>%
+  mutate(mzRange = ifelse(mz > colRanges$minMz[1] & mz < colRanges$maxMz[1], 
+                          colRanges$lab[1], NA),
+         mzRange = ifelse(mz > colRanges$minMz[2] & mz < colRanges$maxMz[2], 
+                          colRanges$lab[2], mzRange),
+         mzRange = ifelse(mz > colRanges$minMz[3] & mz < colRanges$maxMz[3], 
+                          colRanges$lab[3], mzRange)) %>%
+  left_join(idInfo) %>%
+  mutate(relInt = relInt * 100)
+
+specCmb2 %>%
+  ggplot(aes(x = as.numeric(mz), y = relInt)) +
+  geom_line(size = 0.5) +
+  geom_line(data = specCmb2[!is.na(specCmb2$mzRange), ], aes(color = mzRange), size = 0.5) +
+  coolTheme +
+  theme(legend.position = "none") +
+  labs(x = "m/z",
+       y = "Relative Intensity") +
+  facet_wrap(~ labs, ncol = 1) 
+
+ggsave("results/randomMixedSpec.png", width = 4, height = 4)
 
 
 ```
