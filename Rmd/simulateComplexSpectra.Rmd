@@ -92,6 +92,7 @@ comboSummary <- combos %>%
             KpSus = ifelse(any(KpSus == "pos"), "pos", "neg"))
 
 saveRDS(comboSummary, file = "temp/complexSpectraSummary.RDS")
+saveRDS(combos, file = "temp/complexComponents.RDS")
 ```
 
 # Create Complex Spectra from Selections
@@ -131,11 +132,13 @@ comboSpec <- ddply(combos, "spec_id", f, spec,
                      .packages = c("dplyr", "MALDIquant", "stringr"),
                      .export = c("makeComplexSpec", "extractSpectra")))
 
-
+saveRDS(comboSpec, "temp/comboSpec.RDS")
 
 feattbl <- comboSpec %>%
   group_by(id) %>%
   do(extractFeatures(., featureVec = unique(features$mz), tol = 2.5))
+
+saveRDS(feattbl, "temp/comboFeatTbl.RDS")
 
 mlFeat <- feattbl %>%
   select(id, feat, relInt) %>%
