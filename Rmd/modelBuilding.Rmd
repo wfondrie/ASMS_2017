@@ -236,7 +236,7 @@ saveRDS(modelList, file = "results/modelList.RDS")
 # Generate Test Sets
 ```{r generateTestSets}
 testDatList <- map(trainIdx, createFeatureTbl, 
-                    mzTol = 2.5,
+                    mzTol = 1,
                     testSet = T)
 
 saveRDS(testDatList, file = "temp/testDatList.RDS")
