@@ -143,7 +143,7 @@ createFeatureTbl <- function(trainList, mzTol, testSet = F) {
 }
 
 trainDatList <- map(trainIdx, createFeatureTbl, 
-                    mzTol = 2.5,
+                    mzTol = 1,
                     testSet = F)
 
 ```

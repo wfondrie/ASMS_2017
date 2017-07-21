@@ -136,7 +136,7 @@ saveRDS(comboSpec, "temp/comboSpec.RDS")
 
 feattbl <- comboSpec %>%
   group_by(id) %>%
-  do(extractFeatures(., featureVec = unique(features$mz), tol = 2.5))
+  do(extractFeatures(., featureVec = unique(features$mz), tol = 1))
 
 saveRDS(feattbl, "temp/comboFeatTbl.RDS")
 
